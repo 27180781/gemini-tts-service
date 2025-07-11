@@ -1,47 +1,50 @@
 import os
+import json
 import requests
 import google.generativeai as genai
 from celery import Celery
-from dotenv import load_dotenv
-
-# Load environment variables from .env file (for local development)
-load_dotenv()
 
 # --- Configuration ---
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-TTS_MODEL = os.getenv("GEMINI_MODEL", "tts-1") # Defaults to tts-1 if not set
-TTS_VOICE = os.getenv("TTS_VOICE", "echo") # Defaults to echo if not set
-SUCCESS_WEBHOOK_URL = os.getenv("SUCCESS_WEBHOOK_URL")
-ERROR_WEBHOOK_URL = os.getenv("ERROR_WEBHOOK_URL")
+SETTINGS_FILE = "/data/settings.json"
 REDIS_URL = os.getenv("REDIS_URL")
+
+def load_settings():
+    """טוען הגדרות מהקובץ או ממשתני הסביבה"""
+    if os.path.exists(SETTINGS_FILE):
+        with open(SETTINGS_FILE, 'r') as f:
+            return json.load(f)
+    else:
+        # Fallback to environment variables
+        return {
+            "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
+            "GEMINI_MODEL": os.getenv("GEMINI_MODEL", "tts-1"),
+            "TTS_VOICE": os.getenv("TTS_VOICE", "echo"),
+            "SUCCESS_WEBHOOK_URL": os.getenv("SUCCESS_WEBHOOK_URL", ""),
+            "ERROR_WEBHOOK_URL": os.getenv("ERROR_WEBHOOK_URL", "")
+        }
 
 # Configure Celery
 celery_app = Celery("worker", broker=REDIS_URL)
 
-# Configure Gemini
-genai.configure(api_key=GEMINI_API_KEY)
-
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
 def generate_audio_task(self, text: str, phone_number: str):
-    """
-    This background task generates audio using the real Gemini API and sends it.
-    """
+    """מייצר סאונד על בסיס ההגדרות מהקובץ"""
     print(f"Starting REAL audio generation for: {phone_number}")
+    
+    # **טעינת ההגדרות המעודכנות בתחילת כל משימה**
+    settings = load_settings()
+    
     try:
-        # 1. Call the Gemini Text-to-Speech API
-        # The specific model for TTS might be named differently, e.g., 'tts-1' or 'gemini-1.5-pro'
-        # with a tts feature. This code assumes a direct TTS model endpoint.
-        print(f"Using model: {TTS_MODEL} and voice: {TTS_VOICE}")
+        # Configure Gemini with the loaded key
+        genai.configure(api_key=settings.get("GEMINI_API_KEY"))
+
+        print(f"Using model: {settings.get('GEMINI_MODEL')} and voice: {settings.get('TTS_VOICE')}")
         
-        # Note: The actual method for TTS might differ slightly.
-        # This is based on common patterns in the Gemini SDK.
-        model = genai.GenerativeModel(TTS_MODEL)
+        model = genai.GenerativeModel(settings.get("GEMINI_MODEL"))
         response = model.generate_content(text, generation_config={
-            "tts_voice": TTS_VOICE
+            "tts_voice": settings.get("TTS_VOICE")
         })
 
-        # The audio data is expected in response.iter_chunks
-        # We need to collect it.
         audio_data = b"".join(chunk.data for chunk in response)
         
         if not audio_data:
@@ -49,30 +52,30 @@ def generate_audio_task(self, text: str, phone_number: str):
 
         file_name = f"{phone_number}.mp3"
         
-        # 2. Send the audio file to the success webhook
-        if not SUCCESS_WEBHOOK_URL:
+        # Send the audio file to the success webhook
+        success_url = settings.get("SUCCESS_WEBHOOK_URL")
+        if not success_url:
              raise ValueError("SUCCESS_WEBHOOK_URL is not configured.")
 
         files = {'audio_file': (file_name, audio_data, 'audio/mpeg')}
         
-        print(f"Sending audio file to success webhook: {SUCCESS_WEBHOOK_URL}")
-        post_response = requests.post(SUCCESS_WEBHOOK_URL, files=files, timeout=30)
-        post_response.raise_for_status() # Raise an exception for HTTP errors 4xx/5xx
+        print(f"Sending audio file to success webhook: {success_url}")
+        post_response = requests.post(success_url, files=files, timeout=30)
+        post_response.raise_for_status() 
 
         return {"status": "success", "phone_number": phone_number}
 
     except Exception as exc:
         print(f"Task for {phone_number} failed. Error: {str(exc)}")
         try:
-            # Retry the task
             raise self.retry(exc=exc)
-        except Exception as retry_exc: # This catches the final failure after all retries
-            # If all retries fail, send to error webhook
-            if ERROR_WEBHOOK_URL:
+        except Exception as retry_exc:
+            error_url = settings.get("ERROR_WEBHOOK_URL")
+            if error_url:
                 error_payload = {
                     "phone_number": phone_number,
                     "error_message": f"Failed after multiple retries: {str(retry_exc)}"
                 }
-                requests.post(ERROR_WEBHOOK_URL, json=error_payload, timeout=10)
+                requests.post(error_url, json=error_payload, timeout=10)
             print(f"Max retries exceeded for {phone_number}. Sent error notification.")
             return {"status": "failed", "error": str(retry_exc)}
