@@ -42,11 +42,15 @@ def generate_audio_task(self, text: str, phone_number: str):
         
         model = genai.GenerativeModel(settings.get("GEMINI_MODEL"))
         
-        # --- תיקון: שינוי طريقة הקריאה ל-API ---
-        # הסרנו את generation_config שהכיל את tts_voice, מכיוון שהמודלים החדשים אינם מזהים אותו.
-        # אנו פשוט שולחים את הטקסט. המודל אמור להבין מהשם שלו שמדובר במשימת טקסט-לדיבור.
-        response = model.generate_content(text)
+        # --- תיקון סופי: בקשה מפורשת לקבלת קובץ אודיו ---
+        # השגיאה הקודמת הראתה שהשרת דורש לדעת איזה סוג פלט אנחנו רוצים.
+        # אנחנו מוסיפים את ההגדרה הזו כדי לבקש קובץ שמע מסוג mpeg (MP3).
+        response = model.generate_content(
+            text,
+            generation_config={"response_mime_type": "audio/mpeg"}
+        )
 
+        # הקוד מכאן והלאה נשאר זהה
         audio_data = b"".join(chunk.data for chunk in response)
         
         if not audio_data:
