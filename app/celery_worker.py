@@ -2,9 +2,8 @@ import os
 import json
 import redis
 import requests
-# The new library might change how we import. This is the most likely new structure.
 from google import genai
-from google.genai import types 
+from google.genai import types
 from celery import Celery
 from celery.exceptions import MaxRetriesExceededError
 
@@ -46,9 +45,8 @@ def generate_audio_task(self, text: str, phone_number: str):
         if not api_key or not success_url:
             raise ValueError("API Key or Success Webhook URL are not configured.")
 
-        # Configure the client globally using the new library
-        genai.configure(api_key=api_key)
-        client = genai.Client()
+        # Correct way to instantiate the client with the API key in the new library
+        client = genai.Client(api_key=api_key)
 
         # --- Step 1: Build the full prompt and configuration ---
         prompt = settings.get("TTS_PROMPT", "")
