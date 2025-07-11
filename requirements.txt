@@ -5,3 +5,4 @@ redis
 google-generativeai
 requests
 python-dotenv
+python-multipart
