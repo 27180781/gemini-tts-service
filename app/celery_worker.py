@@ -1,18 +1,20 @@
 import os
 import json
+import redis
 import requests
 import google.generativeai as genai
 from celery import Celery
 
 # --- Configuration ---
-SETTINGS_FILE = "/data/settings.json"
 REDIS_URL = os.getenv("REDIS_URL")
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+SETTINGS_KEY = "tts_settings"
 
 def load_settings():
-    """טוען הגדרות מהקובץ או ממשתני הסביבה"""
-    if os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, 'r') as f:
-            return json.load(f)
+    """טוען הגדרות מ-Redis או ממשתני הסביבה"""
+    settings_json = redis_client.get(SETTINGS_KEY)
+    if settings_json:
+        return json.loads(settings_json)
     else:
         # Fallback to environment variables
         return {
@@ -28,10 +30,10 @@ celery_app = Celery("worker", broker=REDIS_URL)
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
 def generate_audio_task(self, text: str, phone_number: str):
-    """מייצר סאונד על בסיס ההגדרות מהקובץ"""
+    """מייצר סאונד על בסיס ההגדרות מ-Redis"""
     print(f"Starting REAL audio generation for: {phone_number}")
     
-    # **טעינת ההגדרות המעודכנות בתחילת כל משימה**
+    # **טעינת ההגדרות המעודכנות מ-Redis בתחילת כל משימה**
     settings = load_settings()
     
     try:

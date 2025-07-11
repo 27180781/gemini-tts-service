@@ -1,18 +1,21 @@
 import os
 import json
-from fastapi import FastAPI, Request, Form, Depends
+import redis
+from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from .celery_worker import generate_audio_task
 from pydantic import BaseModel
 
 app = FastAPI(title="Gemini TTS Service")
-SETTINGS_FILE = "/data/settings.json"
+REDIS_URL = os.getenv("REDIS_URL")
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+SETTINGS_KEY = "tts_settings"
 
 def load_settings():
-    """טוען הגדרות מהקובץ או ממשתני הסביבה אם הקובץ לא קיים"""
-    if os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, 'r') as f:
-            return json.load(f)
+    """טוען הגדרות מ-Redis או ממשתני הסביבה"""
+    settings_json = redis_client.get(SETTINGS_KEY)
+    if settings_json:
+        return json.loads(settings_json)
     else:
         # Fallback to environment variables
         return {
@@ -37,6 +40,7 @@ def queue_audio_generation(request: TTSRequest):
 async def get_settings_page():
     """מציג את דף ההגדרות עם הערכים הנוכחיים"""
     settings = load_settings()
+    # כאן הקוד של ה-HTML נשאר זהה לקוד מהתשובה הקודמת
     html_content = f"""
     <html>
         <head>
@@ -74,9 +78,10 @@ async def get_settings_page():
     """
     return HTMLResponse(content=html_content)
 
+
 @app.post("/settings")
-async def save_settings_from_form(request: Request):
-    """שומר את ההגדרות מהטופס לקובץ JSON"""
+async def save_settings_to_redis(request: Request):
+    """שומר את ההגדרות מהטופס ל-Redis"""
     form_data = await request.form()
     settings = {
         "GEMINI_API_KEY": form_data.get("gemini_api_key"),
@@ -85,7 +90,5 @@ async def save_settings_from_form(request: Request):
         "SUCCESS_WEBHOOK_URL": form_data.get("success_webhook_url"),
         "ERROR_WEBHOOK_URL": form_data.get("error_webhook_url")
     }
-    with open(SETTINGS_FILE, 'w') as f:
-        json.dump(settings, f, indent=4)
-    
+    redis_client.set(SETTINGS_KEY, json.dumps(settings))
     return RedirectResponse(url="/settings", status_code=303)
