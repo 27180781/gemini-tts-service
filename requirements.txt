@@ -2,7 +2,6 @@ fastapi
 uvicorn[standard]
 celery
 redis
-google-generativeai
-requests
+google-generativeai>=0.5.0requests
 python-dotenv
 python-multipart
