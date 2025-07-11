@@ -33,19 +33,19 @@ def generate_audio_task(self, text: str, phone_number: str):
     """מייצר סאונד על בסיס ההגדרות מ-Redis"""
     print(f"Starting REAL audio generation for: {phone_number}")
     
-    # **טעינת ההגדרות המעודכנות מ-Redis בתחילת כל משימה**
     settings = load_settings()
     
     try:
-        # Configure Gemini with the loaded key
         genai.configure(api_key=settings.get("GEMINI_API_KEY"))
 
-        print(f"Using model: {settings.get('GEMINI_MODEL')} and voice: {settings.get('TTS_VOICE')}")
+        print(f"Using model: {settings.get('GEMINI_MODEL')}")
         
         model = genai.GenerativeModel(settings.get("GEMINI_MODEL"))
-        response = model.generate_content(text, generation_config={
-            "tts_voice": settings.get("TTS_VOICE")
-        })
+        
+        # --- תיקון: שינוי طريقة הקריאה ל-API ---
+        # הסרנו את generation_config שהכיל את tts_voice, מכיוון שהמודלים החדשים אינם מזהים אותו.
+        # אנו פשוט שולחים את הטקסט. המודל אמור להבין מהשם שלו שמדובר במשימת טקסט-לדיבור.
+        response = model.generate_content(text)
 
         audio_data = b"".join(chunk.data for chunk in response)
         
@@ -54,7 +54,6 @@ def generate_audio_task(self, text: str, phone_number: str):
 
         file_name = f"{phone_number}.mp3"
         
-        # Send the audio file to the success webhook
         success_url = settings.get("SUCCESS_WEBHOOK_URL")
         if not success_url:
              raise ValueError("SUCCESS_WEBHOOK_URL is not configured.")
