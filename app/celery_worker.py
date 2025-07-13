@@ -97,34 +97,40 @@ def generate_audio_task(self, text: str, phone_number: str, short_text: Optional
         post_response = requests.post(dynamic_webhook_url, files=files, data=payload, timeout=30)
         post_response.raise_for_status()
 
-        print(f"Audio file for {phone_number} sent successfully.")
+       print("Audio file sent successfully.")
 
-        # --- לוגיקה חדשה: שליחת Callback משני ---
-        callback_url_template = settings.get("CALLBACK_URL")
-        if callback_url_template and short_text:
+  # --- ⬇️ לוגיקת Callback שונתה לחלוטין ⬇️ ---
+        
+        base_callback_url = settings.get("CALLBACK_URL")
+        if base_callback_url and short_text:
             print(f"Preparing to send secondary callback for {phone_number}.")
             try:
-                # החלפת כל ה-Placeholders האפשריים
-                dynamic_callback_url = callback_url_template.replace("{{PHONE_NUMBER}}", phone_number)
-                dynamic_callback_url = dynamic_callback_url.replace("{{SHORT_TEXT}}", short_text)
-
-                callback_payload = {
-                    "phone_number": phone_number,
-                    "short_text": short_text
-                }
+                # 1. יצירת מילון פייתון עם הנתונים
+                phones_dict = {phone_number: short_text}
                 
-                print(f"Sending callback to: {dynamic_callback_url}")
-                callback_response = requests.post(dynamic_callback_url, data=callback_payload, timeout=20)
+                # 2. המרת המילון למחרוזת JSON
+                phones_json_string = json.dumps(phones_dict)
+                
+                # 3. קידוד מחרוזת ה-JSON כדי שתהיה בטוחה לשימוש ב-URL
+                encoded_phones_param = urllib.parse.quote(phones_json_string)
+                
+                # 4. בניית ה-URL הסופי על ידי הוספת הפרמטר המקודד
+                # ודא שבכתובת הבסיסית אין `&` בסוף
+                separator = "&" if "?" in base_callback_url else "?"
+                final_callback_url = f"{base_callback_url}{separator}phones={encoded_phones_param}"
+
+                # בקריאה הזו גוף הבקשה ריק, כי כל המידע נמצא בתוך ה-URL
+                print(f"Sending callback to final URL: {final_callback_url}")
+                callback_response = requests.post(final_callback_url, timeout=20)
                 callback_response.raise_for_status()
                 print(f"Callback for {phone_number} sent successfully.")
 
             except Exception as callback_exc:
-                # כישלון בשליחת ה-callback לא יכשיל את כל המשימה, רק יתריע בלוג
                 print(f"⚠️ WARNING: Failed to send callback for {phone_number}. Error: {callback_exc}")
 
-        return {"status": "success", "phone_number": phone_number, "callback_sent": bool(callback_url_template and short_text)}
+        return {"status": "success", "phone_number": phone_number, "callback_sent": bool(base_callback_url and short_text)}
 
-    except Exception as exc:
+    except Exception as exc:       
         # --- לוגיקת טיפול בשגיאות (ללא שינוי) ---
         print(f"Task for {phone_number} failed. Attempt {self.request.retries + 1} of {self.max_retries}. Error: {str(exc)}")
         try:
