@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from .celery_worker import generate_audio_task
 from pydantic import BaseModel
+from typing import Optional
 
 app = FastAPI(title="Gemini TTS Service")
 
@@ -25,17 +26,23 @@ def load_settings():
             "TTS_VOICE": os.getenv("TTS_VOICE", "Kore"),
             "TTS_PROMPT": os.getenv("TTS_PROMPT", ""),
             "SUCCESS_WEBHOOK_URL": os.getenv("SUCCESS_WEBHOOK_URL", ""),
-            "ERROR_WEBHOOK_URL": os.getenv("ERROR_WEBHOOK_URL", "")
+            "ERROR_WEBHOOK_URL": os.getenv("ERROR_WEBHOOK_URL", ""),
+            "CALLBACK_URL": os.getenv("CALLBACK_URL", ""),
         }
 
 class TTSRequest(BaseModel):
     text: str
     phone_number: str
+    short_text: Optional[str] = None
 
 @app.post("/generate-audio")
 def queue_audio_generation(request: TTSRequest):
-    """Queues a task for audio generation."""
-    task = generate_audio_task.delay(text=request.text, phone_number=request.phone_number)
+    """Queues a task for audio generation and callback."""
+    task = generate_audio_task.delay(
+        text=request.text,
+        phone_number=request.phone_number,
+        short_text=request.short_text
+    )
     return {"message": "Task queued successfully", "task_id": task.id}
 
 @app.get("/settings", response_class=HTMLResponse)
@@ -54,6 +61,7 @@ async def get_settings_page():
                 input, select {{ padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 4px; }}
                 button {{ margin-top: 25px; padding: 12px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 16px; }}
                 .help-text {{ font-size: 0.9em; color: #666; margin-top: 2px; }}
+                code {{ background-color: #f1f1f1; padding: 2px 4px; border-radius: 3px; }}
             </style>
         </head>
         <body>
@@ -72,11 +80,16 @@ async def get_settings_page():
                 <label for="tts_prompt">סגנון הקראה (הנחיה):</label>
                 <input type="text" id="tts_prompt" name="tts_prompt" value="{settings.get('TTS_PROMPT', '')}">
 
-                <label for="success_webhook_url">Success Webhook URL:</label>
+                <label for="success_webhook_url">Success Webhook URL (for Audio File):</label>
                 <input type="url" id="success_webhook_url" name="success_webhook_url" value="{settings.get('SUCCESS_WEBHOOK_URL', '')}">
-                
+                <div class="help-text">תומך ב-<code>{{PHONE_NUMBER}}</code></div>
+
                 <label for="error_webhook_url">Error Webhook URL:</label>
                 <input type="url" id="error_webhook_url" name="error_webhook_url" value="{settings.get('ERROR_WEBHOOK_URL', '')}">
+
+                <label for="callback_url">Callback URL (for Short Text):</label>
+                <input type="url" id="callback_url" name="callback_url" value="{settings.get('CALLBACK_URL', '')}">
+                <div class="help-text">שדה אופציונלי. תומך ב-<code>{{PHONE_NUMBER}}</code> וב-<code>{{SHORT_TEXT}}</code></div>
 
                 <button type="submit">שמור הגדרות</button>
             </form>
@@ -91,11 +104,12 @@ async def save_settings_to_redis(request: Request):
     form_data = await request.form()
     settings = {
         "GEMINI_API_KEY": form_data.get("api_key"),
-        "GEMINI_TTS_MODEL": form_data.get("tts_model"), # Key is tts_model
+        "GEMINI_TTS_MODEL": form_data.get("tts_model"),
         "TTS_VOICE": form_data.get("tts_voice"),
         "TTS_PROMPT": form_data.get("tts_prompt"),
         "SUCCESS_WEBHOOK_URL": form_data.get("success_webhook_url"),
-        "ERROR_WEBHOOK_URL": form_data.get("error_webhook_url")
+        "ERROR_WEBHOOK_URL": form_data.get("error_webhook_url"),
+        "CALLBACK_URL": form_data.get("callback_url"),
     }
     redis_client.set(SETTINGS_KEY, json.dumps(settings))
     return RedirectResponse(url="/settings", status_code=303)
