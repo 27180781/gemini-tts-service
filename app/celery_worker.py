@@ -101,7 +101,7 @@ def generate_audio_task(self, text: str, phone_number: str, short_text: Optional
             print(f"Preparing to send secondary callback for {phone_number}.")
             try:
                 phones_dict = {phone_number: short_text}
-                phones_json_string = json.dumps(phones_dict)
+                phones_json_string = json.dumps(phones_dict, separators=(',', ':'))
                 encoded_phones_param = urllib.parse.quote(phones_json_string)
                 
                 separator = "&" if "?" in base_callback_url else "?"
