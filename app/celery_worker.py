@@ -23,6 +23,7 @@ def load_settings():
     if settings_json:
         return json.loads(settings_json)
     else:
+        # Default settings pointing to the new models
         return {
             "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
             "GEMINI_TTS_MODEL": os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts"),
@@ -31,6 +32,10 @@ def load_settings():
             "SUCCESS_WEBHOOK_URL": os.getenv("SUCCESS_WEBHOOK_URL", ""),
             "ERROR_WEBHOOK_URL": os.getenv("ERROR_WEBHOOK_URL", ""),
             "CALLBACK_URL": os.getenv("CALLBACK_URL", ""),
+            # --- ⬇️ שדות חדשים עבור פרמטרים ⬇️ ---
+            "CALLBACK_TOKEN": os.getenv("CALLBACK_TOKEN", ""),
+            "CALLBACK_WITH_SMS": os.getenv("CALLBACK_WITH_SMS", "1"),
+            "CALLBACK_TTS_MODE": os.getenv("CALLBACK_TTS_MODE", "1"),
         }
 
 celery_app = Celery("app.celery_worker", broker=REDIS_URL)
@@ -96,24 +101,37 @@ def generate_audio_task(self, text: str, phone_number: str, short_text: Optional
             post_response.raise_for_status()
             print("Audio file sent successfully.")
 
+        # --- ⬇️ לוגיקת Callback חדשה, בדרך המומלצת ⬇️ ---
         base_callback_url = settings.get("CALLBACK_URL")
         if base_callback_url and short_text:
             print(f"Preparing to send secondary callback for {phone_number}.")
             try:
+                # 1. בניית ה-JSON עבור הפרמטר 'phones'
                 phones_dict = {phone_number: short_text}
                 phones_json_string = json.dumps(phones_dict, separators=(',', ':'))
-                encoded_phones_param = urllib.parse.quote(phones_json_string)
-                
-                separator = "&" if "?" in base_callback_url else "?"
-                final_callback_url = f"{base_callback_url}{separator}phones={encoded_phones_param}"
 
-                print(f"Sending callback to final URL: {final_callback_url}")
-                callback_response = requests.get(final_callback_url, timeout=20)
+                # 2. בניית מילון עם כל הפרמטרים של ה-URL
+                params_payload = {
+                    'token': settings.get("CALLBACK_TOKEN"),
+                    'withSMS': settings.get("CALLBACK_WITH_SMS"),
+                    'ttsMode': settings.get("CALLBACK_TTS_MODE"),
+                    'phones': phones_json_string # הערך הוא מחרוזת ה-JSON שיצרנו
+                }
+
+                # 3. שליחת הבקשה - נותנים ל-requests לבנות את ה-URL הסופי
+                print(f"Sending callback to: {base_callback_url} with params: {params_payload}")
+                # שים לב שאנחנו משתמשים ב-requests.get ובפרמטר 'params'
+                callback_response = requests.get(base_callback_url, params=params_payload, timeout=20)
+                
+                # הדפסת ה-URL הסופי שנשלח, כפי ש-requests בנה אותו
+                print(f"Full URL as sent by requests: {callback_response.url}")
+
                 callback_response.raise_for_status()
                 print(f"Callback for {phone_number} sent successfully.")
 
             except Exception as callback_exc:
                 print(f"⚠️ WARNING: Failed to send callback for {phone_number}. Error: {callback_exc}")
+
 
         return {"status": "success", "phone_number": phone_number, "callback_sent": bool(base_callback_url and short_text)}
 

@@ -28,6 +28,10 @@ def load_settings():
             "SUCCESS_WEBHOOK_URL": os.getenv("SUCCESS_WEBHOOK_URL", ""),
             "ERROR_WEBHOOK_URL": os.getenv("ERROR_WEBHOOK_URL", ""),
             "CALLBACK_URL": os.getenv("CALLBACK_URL", ""),
+            # --- ⬇️ שדות חדשים עבור פרמטרים ⬇️ ---
+            "CALLBACK_TOKEN": os.getenv("CALLBACK_TOKEN", ""),
+            "CALLBACK_WITH_SMS": os.getenv("CALLBACK_WITH_SMS", "1"),
+            "CALLBACK_TTS_MODE": os.getenv("CALLBACK_TTS_MODE", "1"),
         }
 
 class TTSRequest(BaseModel):
@@ -87,9 +91,18 @@ async def get_settings_page():
                 <label for="error_webhook_url">Error Webhook URL:</label>
                 <input type="url" id="error_webhook_url" name="error_webhook_url" value="{settings.get('ERROR_WEBHOOK_URL', '')}">
 
-                <label for="callback_url">Callback URL (for Short Text):</label>
+                <label for="callback_url">Callback Base URL:</label>
                 <input type="url" id="callback_url" name="callback_url" value="{settings.get('CALLBACK_URL', '')}">
-                <div class="help-text">שדה אופציונלי. תומך ב-<code>{{PHONE_NUMBER}}</code> וב-<code>{{SHORT_TEXT}}</code></div>
+                <div class="help-text">רק כתובת הבסיס, ללא פרמטרים. למשל: https://www.call2all.co.il/ym/api/RunCampaign</div>
+
+                <label for="callback_token">Callback Token:</label>
+                <input type="text" id="callback_token" name="callback_token" value="{settings.get('CALLBACK_TOKEN', '')}">
+
+                <label for="callback_with_sms">Callback 'withSMS' Parameter:</label>
+                <input type="text" id="callback_with_sms" name="callback_with_sms" value="{settings.get('CALLBACK_WITH_SMS', '1')}">
+
+                <label for="callback_tts_mode">Callback 'ttsMode' Parameter:</label>
+                <input type="text" id="callback_tts_mode" name="callback_tts_mode" value="{settings.get('CALLBACK_TTS_MODE', '1')}">
 
                 <button type="submit">שמור הגדרות</button>
             </form>
@@ -110,6 +123,10 @@ async def save_settings_to_redis(request: Request):
         "SUCCESS_WEBHOOK_URL": form_data.get("success_webhook_url"),
         "ERROR_WEBHOOK_URL": form_data.get("error_webhook_url"),
         "CALLBACK_URL": form_data.get("callback_url"),
+        # --- ⬇️ שמירת השדות החדשים ⬇️ ---
+        "CALLBACK_TOKEN": form_data.get("callback_token"),
+        "CALLBACK_WITH_SMS": form_data.get("callback_with_sms"),
+        "CALLBACK_TTS_MODE": form_data.get("callback_tts_mode"),
     }
     redis_client.set(SETTINGS_KEY, json.dumps(settings))
     return RedirectResponse(url="/settings", status_code=303)
