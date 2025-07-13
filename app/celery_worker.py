@@ -114,7 +114,7 @@ def generate_audio_task(self, text: str, phone_number: str, short_text: Optional
                 }
                 
                 print(f"Sending callback to: {dynamic_callback_url}")
-                callback_response = requests.post(dynamic_callback_url, json=callback_payload, timeout=20)
+                callback_response = requests.post(dynamic_callback_url, data=callback_payload, timeout=20)
                 callback_response.raise_for_status()
                 print(f"Callback for {phone_number} sent successfully.")
 
