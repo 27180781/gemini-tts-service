@@ -99,11 +99,11 @@ def generate_audio_task(self, text: str, phone_number: str, short_text: Optional
             post_response.raise_for_status()
             print("Audio file sent successfully.")
 
-        # --- ⬇️ לוגיקת Callback סופית לפי התיעוד הרשמי (אפשרות ב') ⬇️ ---
+        # --- לוגיקת Callback מעודכנת עם הוספת השדה 'name' ---
         
         callback_url = settings.get("CALLBACK_URL")
         if callback_url and short_text:
-            print(f"Preparing final callback for {phone_number} using POST with JSON Body.")
+            print(f"Preparing final callback for {phone_number} with 'name' parameter.")
             try:
                 # 1. בניית מילון עם הפרמטרים שישארו ב-URL
                 query_params = {
@@ -112,15 +112,15 @@ def generate_audio_task(self, text: str, phone_number: str, short_text: Optional
                     'ttsMode': settings.get("CALLBACK_TTS_MODE"),
                 }
 
-                # 2. בניית ה-JSON שיישלח ב-Body לפי הפורמט המדויק מהתיעוד
-                # הפורמט הוא: {"מספר טלפון": {"text": "הטקסט"}}
+                # 2. בניית ה-JSON שיישלח ב-Body, כולל השדה 'name'
                 json_body = {
                     phone_number: {
+                        "name": phone_number, # <-- הוספת השדה החדש
                         "text": short_text
                     }
                 }
                 
-                # 3. שליחת בקשת POST עם הפרמטרים ב-URL וה-JSON ב-Body
+                # 3. שליחת בקשת POST
                 print(f"Sending POST callback to: {callback_url} with params: {query_params} and JSON body: {json_body}")
                 
                 callback_response = requests.post(
