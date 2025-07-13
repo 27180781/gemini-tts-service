@@ -9,7 +9,6 @@ from celery.exceptions import MaxRetriesExceededError
 from typing import Optional
 import wave
 import io
-import urllib.parse
 
 # --- Configuration ---
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -32,7 +31,6 @@ def load_settings():
             "SUCCESS_WEBHOOK_URL": os.getenv("SUCCESS_WEBHOOK_URL", ""),
             "ERROR_WEBHOOK_URL": os.getenv("ERROR_WEBHOOK_URL", ""),
             "CALLBACK_URL": os.getenv("CALLBACK_URL", ""),
-            # --- ⬇️ שדות חדשים עבור פרמטרים ⬇️ ---
             "CALLBACK_TOKEN": os.getenv("CALLBACK_TOKEN", ""),
             "CALLBACK_WITH_SMS": os.getenv("CALLBACK_WITH_SMS", "1"),
             "CALLBACK_TTS_MODE": os.getenv("CALLBACK_TTS_MODE", "1"),
@@ -101,31 +99,37 @@ def generate_audio_task(self, text: str, phone_number: str, short_text: Optional
             post_response.raise_for_status()
             print("Audio file sent successfully.")
 
-        # --- ⬇️ לוגיקת Callback חדשה, בדרך המומלצת ⬇️ ---
+        # --- ⬇️ לוגיקת Callback חדשה: שליחת POST עם JSON Body ⬇️ ---
+        
         base_callback_url = settings.get("CALLBACK_URL")
         if base_callback_url and short_text:
-            print(f"Preparing to send secondary callback for {phone_number}.")
+            print(f"Preparing to send secondary callback for {phone_number} via POST with JSON Body.")
             try:
-                # 1. בניית ה-JSON עבור הפרמטר 'phones'
-                phones_dict = {phone_number: short_text}
-                phones_json_string = json.dumps(phones_dict, separators=(',', ':'))
-
-                # 2. בניית מילון עם כל הפרמטרים של ה-URL
-                params_payload = {
+                # 1. בניית מילון עם הפרמטרים שישארו ב-URL
+                query_params = {
                     'token': settings.get("CALLBACK_TOKEN"),
                     'withSMS': settings.get("CALLBACK_WITH_SMS"),
                     'ttsMode': settings.get("CALLBACK_TTS_MODE"),
-                    'phones': phones_json_string # הערך הוא מחרוזת ה-JSON שיצרנו
                 }
 
-                # 3. שליחת הבקשה - נותנים ל-requests לבנות את ה-URL הסופי
-                print(f"Sending callback to: {base_callback_url} with params: {params_payload}")
-                # שים לב שאנחנו משתמשים ב-requests.get ובפרמטר 'params'
-                callback_response = requests.get(base_callback_url, params=params_payload, timeout=20)
+                # 2. בניית ה-JSON שיישלח ב-Body של הבקשה
+                # שים לב שכאן הטקסט בעברית לא צריך שום קידוד מיוחד
+                json_payload = {
+                    "phones": {
+                        phone_number: short_text
+                    }
+                }
                 
-                # הדפסת ה-URL הסופי שנשלח, כפי ש-requests בנה אותו
-                print(f"Full URL as sent by requests: {callback_response.url}")
-
+                # 3. שליחת בקשת POST עם הפרמטרים ב-URL וה-JSON ב-Body
+                print(f"Sending POST callback to: {base_callback_url} with params: {query_params} and JSON body: {json_payload}")
+                
+                callback_response = requests.post(
+                    base_callback_url,
+                    params=query_params,
+                    json=json_payload, 
+                    timeout=20
+                )
+                
                 callback_response.raise_for_status()
                 print(f"Callback for {phone_number} sent successfully.")
 
