@@ -99,34 +99,29 @@ def generate_audio_task(self, text: str, phone_number: str, short_text: Optional
             post_response.raise_for_status()
             print("Audio file sent successfully.")
 
-        # --- ⬇️ לוגיקת Callback חדשה: שליחת POST עם JSON Body ⬇️ ---
+        # --- ⬇️ לוגיקת Callback סופית: כל המידע ב-JSON Body ⬇️ ---
         
-        base_callback_url = settings.get("CALLBACK_URL")
-        if base_callback_url and short_text:
-            print(f"Preparing to send secondary callback for {phone_number} via POST with JSON Body.")
+        callback_url = settings.get("CALLBACK_URL")
+        if callback_url and short_text:
+            print(f"Preparing to send final callback for {phone_number} with all data in JSON Body.")
             try:
-                # 1. בניית מילון עם הפרמטרים שישארו ב-URL
-                query_params = {
+                # 1. בניית אובייקט JSON אחד עם כל הנתונים
+                final_payload = {
                     'token': settings.get("CALLBACK_TOKEN"),
                     'withSMS': settings.get("CALLBACK_WITH_SMS"),
                     'ttsMode': settings.get("CALLBACK_TTS_MODE"),
-                }
-
-                # 2. בניית ה-JSON שיישלח ב-Body של הבקשה
-                # שים לב שכאן הטקסט בעברית לא צריך שום קידוד מיוחד
-                json_payload = {
-                    "phones": {
+                    'phones': { # הפרמטר הדינמי
                         phone_number: short_text
                     }
                 }
                 
-                # 3. שליחת בקשת POST עם הפרמטרים ב-URL וה-JSON ב-Body
-                print(f"Sending POST callback to: {base_callback_url} with params: {query_params} and JSON body: {json_payload}")
+                # 2. שליחת בקשת POST עם כל הנתונים ב-Body
+                print(f"Sending POST callback to: {callback_url} with full JSON body: {final_payload}")
                 
+                # שים לב שכבר אין פרמטר 'params', רק 'json'
                 callback_response = requests.post(
-                    base_callback_url,
-                    params=query_params,
-                    json=json_payload, 
+                    callback_url,
+                    json=final_payload, 
                     timeout=20
                 )
                 
@@ -137,7 +132,7 @@ def generate_audio_task(self, text: str, phone_number: str, short_text: Optional
                 print(f"⚠️ WARNING: Failed to send callback for {phone_number}. Error: {callback_exc}")
 
 
-        return {"status": "success", "phone_number": phone_number, "callback_sent": bool(base_callback_url and short_text)}
+        return {"status": "success", "phone_number": phone_number, "callback_sent": bool(callback_url and short_text)}
 
     except Exception as exc:
         print(f"Task for {phone_number} failed. Attempt {self.request.retries + 1} of {self.max_retries}. Error: {str(exc)}")
